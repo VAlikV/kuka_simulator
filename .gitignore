@@ -1,0 +1,4 @@
+.vscode
+logs/plots/**
+logs/videos/**
+simulator_old
