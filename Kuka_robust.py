@@ -7,7 +7,7 @@ import pinocchio as pin
 import matplotlib.pyplot as plt
 from scipy.linalg import logm
 
-name = "Kuka_test"
+name = "Kuka_robust"
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 xml_path = os.path.join(current_dir, "robots/kuka_iiwa_14/iiwa14.xml")
@@ -80,15 +80,32 @@ def traj(t):
 
     return X, dX, ddX
 
+def calcVs(M_h, s):
+    norm_s = np.linalg.norm(s)
+    M_inv = np.linalg.pinv(M_h)
+    _, sigmas, _ = np.linalg.svd(M_inv)
+    sigma_max = 1#max(sigmas)
+
+    # s_1.append(norm_s)
+
+    # vs = (200*M_inv/sigma_max)@s/norm_s
+
+    if norm_s > 60:
+        vs = (200*M_inv/sigma_max)@s/norm_s
+    else:
+        vs = (200*M_inv/sigma_max)@s/60
+
+    return vs
+
 def joint_controller(q: np.ndarray, dq: np.ndarray, t: float) -> np.ndarray:
 
-    q_d = np.array([-1.4, -1.3, 1., 0., 0., 0., 0.])
+    q_d = np.array([1.57, -1.05, 0, 0.44, 0, 0, 0.8])
     dq_d = np.array([0., 0., 0., 0., 0., 0., 0.])
     ddq_d = np.array([0., 0., 0., 0., 0., 0., 0.])
 
     # q_d, dq_d, ddq_d = traj(t)
 
-    # print(q_d - q)
+    print(q_d - q)
 
     # Control gains tuned for UR5e
     kp = np.array([100, 100, 100, 100, 100, 100, 100])
@@ -96,21 +113,20 @@ def joint_controller(q: np.ndarray, dq: np.ndarray, t: float) -> np.ndarray:
 
     pin.computeAllTerms(model_1, data_1, q, dq)
 
-    M = data_1.M
-    nle = data_1.nle
+    M_h = 0.95*data_1.M
+    nle_h = 1.05*data_1.nle
 
-    v = kp * (q_d - q) + kd * (dq_d - dq) + ddq_d 
-    
-    # Target joint configuration
-    
-    # PD control law
-    # tau = M @ v + nle
+    lambda_1 = 1*np.array([400., 400., 400., 100., 100., 10., 10.])
 
-    tau = data_1.g
+    s = (dq_d - dq) + lambda_1*(q_d - q)
+
+    v = ddq_d + lambda_1*(dq_d - dq) + calcVs(M_h, s)
+
+    tau = M_h@v + nle_h
 
     # tau += np.array([0., 0., 0., 0., 0., 0., 0.5])
 
-    print(tau)
+    # print(tau)
 
     # tau = np.zeros(7)
 
@@ -138,16 +154,16 @@ def main():
         height=1080
     )
 
-    # damping = np.array([0.5, 0.5, 0.5, 0.3, 0.1, 0.1, 0.1])  # Nm/rad/s
-    # sim.set_joint_damping(damping)
+    damping = np.array([0.5, 0.5, 0.5, 0.3, 0.1, 0.1, 0.1])  # Nm/rad/s
+    sim.set_joint_damping(damping)
     
-    # friction = np.array([0.5, 0.5, 0.5, 0.3, 0.1, 0.1, 0.1])  # Nm
-    # sim.set_joint_friction(friction)
+    friction = np.array([0.5, 0.5, 0.5, 0.3, 0.1, 0.1, 0.1])  # Nm
+    sim.set_joint_friction(friction)
 
     # sim.modify_body_properties("end_effector", mass=4)
 
     sim.set_controller(joint_controller)
-    sim.run(time_limit=1.0)
+    sim.run(time_limit=10.0)
 
 if __name__ == "__main__":
     # print(current_dir)
@@ -158,5 +174,5 @@ if __name__ == "__main__":
     velocities_1 = np.array(velocities_1)
     control_1 = np.array(control_1)
     error_1 = np.array(error_1)
-    plot_results(name, times_1, positions_1, velocities_1, control_1, error_1)
+    plot_results(times_1, positions_1, velocities_1, control_1, error_1)
     
